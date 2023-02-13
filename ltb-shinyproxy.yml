@@ -1,0 +1,58 @@
+version: '3.3'
+services:
+  shinyproxy:
+    image: landscapedatacommons/ltb-shinyproxy:2.6.1
+    # Set user for bind mount 'copy'
+    user: shinyproxy:shinyproxy
+    build:
+      context: .
+    ports:
+      - ${PORT}
+    networks:
+      - public
+      - shiny-net
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/docker/landscapedatacommons/ltb-shinyproxy/application.yml:/opt/shinyproxy/application.yml
+    # The labels section is where you specify configuration values for Traefik.
+    # Docker labels do not do anything by themselves, but Traefik reads these so
+    # it knows how to treat containers.
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints:
+          - node.role==manager
+      labels:
+          - traefik.enable=true # enable traefik
+          - traefik.docker.network=public # put it in the same network as traefik
+          - traefik.constraint-label=public # assign the same label as traefik so it can be discovered
+          - traefik.http.routers.ltb-shinyproxy.rule=Host(`${DOMAIN? DOMAIN variable not set}`) # listen to port 80 for request to DOMAIN (use together with the line below)
+          - traefik.http.routers.ltb-shinyproxy.entrypoints=http
+          - traefik.http.middlewares.ltb-shinyproxy.redirectscheme.scheme=https # redirect traffic to https
+          - traefik.http.middlewares.ltb-shinyproxy.redirectscheme.permanent=true # redirect traffic to https
+          - traefik.http.routers.ltb-shinyproxy-secured.rule=Host(`${DOMAIN? DOMAIN variable not set}`) # listen to port 443 for request to DOMAIN (use together with the line below)          - traefik.http.routers.ltb-shinyproxy-secured.entrypoints=https
+          - traefik.http.routers.ltb-shinyproxy-secured.tls.certresolver=leresolver # use the Let's Encrypt certificate we set up earlier
+          - traefik.http.services.ltb-shinyproxy-secured.loadbalancer.server.port=${PORT? PORT variable not set} # ask Traefik to search for port of shinyproxy service container
+
+  balanced-design-tool:
+    image: landscapedatacommons/sp-balanced-design-tool:4.2.2
+    networks:
+      - shiny-net
+
+  benchmark-exploration-tool:
+    image: landscapedatacommons/sp-benchmark-exploration-tool:4.2.2
+    networks:
+      - shiny-net
+
+  rangeland-indicator-calculator:
+    image: landscapedatacommons/sp-rangeland-indicator-calculator:4.2.2
+    networks:
+      - shiny-net
+
+networks:
+  public:
+    external: true
+  shiny-net:
+    external: true
